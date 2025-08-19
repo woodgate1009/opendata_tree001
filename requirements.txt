@@ -1,2 +1,4 @@
 Flask==2.3.3
-Werkzeug==2.3.7 
+Werkzeug==2.3.7
+waitress==3.0.2 
+pip freeze > requirements.txt
