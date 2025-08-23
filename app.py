@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, make_response
+from flask import Flask, render_template, jsonify, request, make_response, send_from_directory
 import json
 import os
 from datetime import datetime, timedelta, date
@@ -22,7 +22,7 @@ except ImportError as e:
     print(f"NDVI機能は無効です（依存関係不足）: {e}")
     NDVI_ENABLED = False
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # TensorFlowのログレベル設定
 os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
@@ -843,6 +843,9 @@ def get_ndvi_status():
             'enabled': False,
             'message': 'NDVI機能は無効です（依存関係をインストールしてください）'
         })
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 if __name__ == '__main__':
     # AI初期化
