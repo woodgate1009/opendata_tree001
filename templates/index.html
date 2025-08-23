@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>東京都公園樹木健康監視システム</title>
+    <title>マツ・ナラNDVI監視システム</title>
     
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
@@ -20,8 +20,8 @@
     <div class="container">
         <!-- ヘッダー -->
         <header class="header">
-            <h1>🌳 東京都公園樹木健康監視システム</h1>
-            <p>衛星データによる樹木健康状態の可視化</p>
+            <h1>マツ・ナラNDVI監視システム</h1>
+            <p>衛星データによるマツ・ナラ樹種の植生変化監視</p>
         </header>
 
         <!-- メインコンテンツ -->
@@ -31,28 +31,33 @@
                 <div id="map"></div>
                 <div class="map-controls">
                     <div class="legend">
-                        <h3>凡例</h3>
+                        <h3>植生の凡例</h3>
                         <div class="legend-item">
-                            <span class="legend-color park-polygon"></span>
-                            <span>公園エリア</span>
+                            <span class="legend-color" style="background: #ff0000; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>警戒（-0.5以下）</span>
                         </div>
                         <div class="legend-item">
-                            <span class="legend-color selected-park"></span>
-                            <span>選択中の公園</span>
+                            <span class="legend-color" style="background: #ff8c00; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>減少（-0.1～-0.5）</span>
                         </div>
                         <div class="legend-item">
-                            <span class="legend-color citizen-report"></span>
-                            <span>市民レポート</span>
+                            <span class="legend-color" style="background: #ffff00; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>安定（±0.1以内）</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #00ff00; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>増加（+0.1以上）</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #888888; width: 8px; height: 8px; border-radius: 50%;"></span>
+                            <span>データなし</span>
                         </div>
                     </div>
                     
                     <!-- 市民レポートボタン -->
                     <div class="citizen-report-controls">
                         <button id="citizen-report-btn" class="report-button">
-                            📸 樹木の状態を報告
-                        </button>
-                        <button id="toggle-reports-btn" class="toggle-button">
-                            👥 市民レポートを表示
+                            新規樹木を登録
                         </button>
                     </div>
                 </div>
@@ -61,33 +66,15 @@
             <!-- サイドパネル -->
             <div class="side-panel">
                 <div class="panel-header">
-                    <h2>📊 時系列分析</h2>
+                    <h2>マツ・ナラ監視状況</h2>
                 </div>
                 
                 <div class="panel-content">
                     <div id="no-selection" class="placeholder">
-                        <p>🗺️ 地図上の公園をクリックして時系列データを表示</p>
+                        <p>マツ・ナラ樹種のNDVI変化を監視中...</p>
                     </div>
                     
-                    <div id="chart-container" style="display: none;">
-                        <div class="park-info">
-                            <h3 id="park-name">公園名</h3>
-                            <p id="park-id">ID: </p>
-                        </div>
-                        
-                        <div class="chart-wrapper">
-                            <canvas id="timeseriesChart"></canvas>
-                        </div>
-                        
-                        <div class="data-info">
-                            <h4>指標説明</h4>
-                            <ul>
-                                <li><strong>NDVI</strong>: 正規化植生指数（緑の健康度）</li>
-                                <li><strong>NDRE</strong>: 正規化差分レッドエッジ指数</li>
-                                <li><strong>PSRI</strong>: 植物老化反射指数</li>
-                            </ul>
-                        </div>
-                    </div>
+                    <!-- チャートコンテナは削除（マツ・ナラ監視では不要） -->
                 </div>
             </div>
         </div>
@@ -114,7 +101,7 @@
                     </div>
                     
                     <div class="form-section">
-                        <h3>📍 位置情報</h3>
+                        <h3>位置情報</h3>
                         <div class="location-options">
                             <label class="radio-option">
                                 <input type="radio" name="location-method" value="current" checked>
@@ -128,7 +115,7 @@
                         
                         <div id="current-location" class="location-section">
                             <button type="button" id="get-current-location" class="location-button">
-                                🎯 現在位置を取得
+                                現在位置を取得
                             </button>
                             <div id="location-status" class="location-status"></div>
                         </div>
@@ -176,7 +163,7 @@
                     <div class="form-actions">
                         <button type="button" class="cancel-button">キャンセル</button>
                         <button type="submit" class="submit-button">
-                            🚀 報告を送信
+                            報告を送信
                         </button>
                     </div>
                 </form>
@@ -187,7 +174,7 @@
         <div id="analysis-result-modal" class="modal">
             <div class="modal-content analysis-modal">
                 <div class="modal-header">
-                    <h2>🤖 AI分析結果</h2>
+                    <h2>AI分析結果</h2>
                     <span class="close">&times;</span>
                 </div>
                 <div id="analysis-content" class="analysis-content">
@@ -200,6 +187,12 @@
         <footer class="footer">
             <p>© 2024 東京都知事杯オープンデータハッカソン | データソース: Sentinel-2衛星データ</p>
         </footer>
+    </div>
+
+    <!-- フローティングアクションボタン（モバイル用） -->
+    <button id="floating-action-btn" class="floating-action-button">+</button>
+    <div id="floating-menu" class="floating-menu">
+        <button id="floating-report-btn" class="floating-menu-item">新規樹木を登録</button>
     </div>
 
     <!-- Leaflet JavaScript -->
