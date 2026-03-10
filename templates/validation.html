@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>論文検証 - マツ・ナラNDVI監視システム</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+          crossorigin=""/>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <header class="header">
+            <h1>論文検証 - SENTINEL-2A/B衛星による自然教育園のナラ枯れ観測</h1>
+            <p>永井 信一 ほか, 自然教育園報告, 第53号, 35–38, 2021 | 複数地点検証</p>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <div class="main-content">
+            <!-- 地図エリア -->
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="map-controls">
+                    <div class="legend">
+                        <h3>論文検証の凡例</h3>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #d4edda; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>健全（0.7-0.8）</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #fff3cd; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>高値（0.8以上）</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #f8d7da; width: 12px; height: 12px; border-radius: 50%;"></span>
+                            <span>低値（0.7未満）</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #e2e3e5; width: 8px; height: 8px; border-radius: 50%;"></span>
+                            <span>データなし</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 検証状況表示 -->
+                    <div class="citizen-report-controls">
+                        <div id="loading-status" class="loading-status">
+                            論文検証データを読み込み中...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- サイドパネル -->
+            <div class="side-panel">
+                <div class="panel-header">
+                    <h2>論文検証結果</h2>
+                </div>
+                
+                <div class="panel-content">
+                    <div id="loading-placeholder" class="placeholder">
+                        <p>論文検証データを読み込み中...</p>
+                        <div class="paper-info" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                            <h4>対象地点情報（5地点）</h4>
+                            <p><strong>名称:</strong> 自然教育園</p>
+                            <p><strong>中心座標:</strong> 35.638378°N, 139.720403°E</p>
+                            <p><strong>樹種:</strong> コナラ、スダジイを主体とする森林</p>
+                            <p><strong>検証地点:</strong> 中心、北西、南東、北東、南西</p>
+                            <p><strong>検証方式:</strong> 前年同期比差分計算</p>
+                        </div>
+                    </div>
+                    
+                    <div id="validation-results" style="display: none;">
+                        <!-- 検証結果がここに表示される -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 論文参照情報 -->
+        <div class="paper-reference" style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 20px 0; font-size: 0.9em;">
+            <h4>論文参照情報</h4>
+            <p><strong>論文:</strong> SENTINEL-2A/B衛星による自然教育園のナラ枯れ観測</p>
+            <p><strong>著者:</strong> 永井 信一 ほか</p>
+            <p><strong>出典:</strong> 自然教育園報告, 第53号, 35–38, 2021</p>
+            <p><strong>調査期間:</strong> 2018年9月5日、2019年9月10日、2020年9月9日</p>
+            <p><strong>論文の健全個体NDVI範囲:</strong> 0.7-0.8</p>
+        </div>
+
+        <!-- フッター -->
+        <footer class="footer">
+            <p>© 2024 東京都知事杯オープンデータハッカソン | データソース: Sentinel-2衛星データ</p>
+        </footer>
+    </div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+            crossorigin=""></script>
+    
+    <script>
+        // 地図の初期化
+        let map;
+        let naturalGardenMarker;
+
+        function initMap() {
+            map = L.map('map').setView([35.638378, 139.720403], 16);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+
+            // 自然教育園内の複数ポイント
+            const points = [
+                {lat: 35.638378, lon: 139.720403, name: '中心', id: 'center'},
+                {lat: 35.638500, lon: 139.720200, name: '北西', id: 'northwest'},
+                {lat: 35.638200, lon: 139.720600, name: '南東', id: 'southeast'},
+                {lat: 35.638600, lon: 139.720600, name: '北東', id: 'northeast'},
+                {lat: 35.638200, lon: 139.720200, name: '南西', id: 'southwest'}
+            ];
+
+            // 各ポイントにマーカーを追加
+            points.forEach(point => {
+                const marker = L.marker([point.lat, point.lon], {
+                    icon: L.divIcon({
+                        className: 'custom-marker',
+                        html: `<div style="background: #007bff; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 10px;">${point.name.charAt(0)}</div>`,
+                        iconSize: [25, 25],
+                        iconAnchor: [12, 12]
+                    })
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <strong>自然教育園（${point.name}）</strong><br>
+                    座標: ${point.lat}°N, ${point.lon}°E<br>
+                    論文検証対象地点
+                `);
+            });
+        }
+
+        // 論文検証データの自動読み込み
+        async function loadValidationData() {
+            const loadingStatus = document.getElementById('loading-status');
+            const loadingPlaceholder = document.getElementById('loading-placeholder');
+            const resultsDiv = document.getElementById('validation-results');
+
+            loadingStatus.textContent = '論文検証データを読み込み中...';
+
+            try {
+                const response = await fetch('/api/validate-paper');
+                const data = await response.json();
+
+                if (data.success) {
+                    loadingStatus.textContent = '論文検証完了';
+                    loadingPlaceholder.style.display = 'none';
+                    resultsDiv.style.display = 'block';
+                    displayResults(data.results);
+                } else {
+                    loadingStatus.textContent = 'エラーが発生しました';
+                    resultsDiv.innerHTML = `<p style="color: red;">エラー: ${data.error}</p>`;
+                }
+            } catch (error) {
+                loadingStatus.textContent = '通信エラーが発生しました';
+                resultsDiv.innerHTML = `<p style="color: red;">通信エラー: ${error.message}</p>`;
+            }
+        }
+
+        // 結果表示（シンプル版）
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('validation-results');
+            
+            let html = '<h3>論文検証結果</h3>';
+            
+            // シンプルな表形式で表示
+            html += `
+                <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="border: 1px solid #ddd; padding: 8px;">地点</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">日付</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">現在年NDVI</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">前年同期NDVI</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">差分</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">論文基準比較</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            results.forEach(result => {
+                let statusText = 'データなし';
+                let statusColor = '#e2e3e5';
+                
+                if (result.current_ndvi !== null && result.current_ndvi !== undefined) {
+                    if (result.current_ndvi >= 0.7 && result.current_ndvi <= 0.8) {
+                        statusText = '健全';
+                        statusColor = '#d4edda';
+                    } else if (result.current_ndvi > 0.8) {
+                        statusText = '高値';
+                        statusColor = '#fff3cd';
+                    } else if (result.current_ndvi < 0.7) {
+                        statusText = '低値';
+                        statusColor = '#f8d7da';
+                    }
+                }
+                
+                html += `
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${result.point_name}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${result.date}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${result.current_ndvi !== null ? result.current_ndvi.toFixed(4) : 'N/A'}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${result.prev_year_ndvi !== null ? result.prev_year_ndvi.toFixed(4) : 'N/A'}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-weight: bold;">${result.ndvi_diff !== null ? result.ndvi_diff.toFixed(4) : 'N/A'}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center; background: ${statusColor};">${statusText}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            
+            // 簡潔な統計情報
+            const validResults = results.filter(r => r.current_ndvi !== null && r.current_ndvi !== undefined);
+            const diffValues = validResults.filter(r => r.ndvi_diff !== null).map(r => r.ndvi_diff);
+            
+            if (validResults.length > 0) {
+                const avgDiff = diffValues.length > 0 ? diffValues.reduce((a, b) => a + b, 0) / diffValues.length : 0;
+                const inRange = validResults.filter(r => r.current_ndvi >= 0.7 && r.current_ndvi <= 0.8).length;
+                
+                html += `
+                    <div style="margin-top: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px;">
+                        <h4>検証サマリー</h4>
+                        <p><strong>有効データ:</strong> ${validResults.length}/${results.length}</p>
+                        <p><strong>平均差分:</strong> ${avgDiff.toFixed(4)}</p>
+                        <p><strong>論文基準範囲内:</strong> ${inRange}/${validResults.length}</p>
+                        <p><strong>論文基準:</strong> NDVI 0.7-0.8（健全）</p>
+                    </div>
+                `;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        // 結果クリア
+        function clearResults() {
+            const noSelection = document.getElementById('no-selection');
+            const resultsDiv = document.getElementById('validation-results');
+            
+            noSelection.style.display = 'block';
+            resultsDiv.style.display = 'none';
+        }
+
+        // イベントリスナー
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            loadValidationData(); // ページ読み込み時に自動でデータを取得
+        });
+    </script>
+</body>
+</html>

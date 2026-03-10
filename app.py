@@ -1,6 +1,15 @@
 from flask import Flask, render_template, jsonify, request, make_response, send_from_directory
+import numpy as np
+import google.generativeai as genai
 import json
 import os
+from dotenv import load_dotenv
+
+if os.path.exists('.env'):
+    load_dotenv('.env')
+else:
+    load_dotenv('env.example')
+
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
 import random
@@ -8,10 +17,7 @@ import uuid
 import sqlite3
 import base64
 from apscheduler.schedulers.background import BackgroundScheduler
-import tensorflow as tf
-from PIL import Image, ImageOps
-import numpy as np
-
+# AI imports removed
 # NDVI関連のインポート（条件付き）
 try:
     from ndvi_processor import NDVIProcessor
@@ -24,84 +30,11 @@ except ImportError as e:
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
-# TensorFlowのログレベル設定
-os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
-os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
-
 # より包括的な警告抑制
 import warnings
-warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf')
-warnings.filterwarnings('ignore', category=UserWarning, module='tensorflow')
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', message='.*protobuf.*')
-warnings.filterwarnings('ignore', message='.*tensorflow.*')
 
-# TensorFlowの設定を最適化
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # より厳格なログレベル
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['TF_ENABLE_MKL_NATIVE_FORMAT'] = '0'
-
-# AI関連の初期化
-ai_model = None
-ai_class_names = []
-
-def initialize_ai():
-    global ai_model, ai_class_names
-    try:
-        # TensorFlowの設定を最適化
-        tf.config.set_soft_device_placement(True)
-        tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True) if tf.config.list_physical_devices('GPU') else None
-        
-        if os.path.exists('keras_model.h5'):
-            print("AIモデルを読み込み中...")
-            ai_model = tf.keras.models.load_model('keras_model.h5', compile=False)
-            print("AIモデルの読み込み完了")
-            
-            if os.path.exists('labels.txt'):
-                with open('labels.txt', 'r', encoding='utf-8') as f:
-                    ai_class_names = [line.strip() for line in f.readlines()]
-                print(f"ラベル読み込み完了: {ai_class_names}")
-            else:
-                print("labels.txt が見つかりません")
-        else:
-            print("keras_model.h5 が見つかりません")
-    except Exception as e:
-        print(f"AI初期化エラー: {e}")
-
-def predict_tree_health(image_data):
-    """樹木画像から健康状態を予測"""
-    global ai_model, ai_class_names
-    
-    if ai_model is None:
-        return None, 0.0
-        
-    try:
-        # 画像を224x224にリサイズし、正規化
-        image = Image.open(image_data).convert('RGB')
-        size = (224, 224)
-        image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
-        image_array = np.asarray(image)
-        normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
-        
-        # 配列の形を整える
-        data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
-        data[0] = normalized_image_array
-
-        # 予測
-        prediction = ai_model.predict(data)
-        index = np.argmax(prediction)
-        
-        if index < len(ai_class_names):
-            class_name = ai_class_names[index]
-            confidence_score = float(prediction[0][index])
-            return class_name, confidence_score
-        else:
-            return None, 0.0
-            
-    except Exception as e:
-        print(f"AI予測エラー: {e}")
-        return None, 0.0
 
 # 既存のデータベースの初期化
 def init_db():
@@ -176,6 +109,15 @@ if NDVI_ENABLED:
 @app.route('/')
 def index():
     return render_template('index.html')
+
+# 論文検証ページのルート
+@app.route('/validation')
+def validation():
+    return render_template('validation.html')
+
+@app.route('/simple-validation')
+def simple_validation():
+    return render_template('simple_validation.html')
 
 # 廃止: 公園データAPIは削除（マツ・ナラデータに移行）
 
@@ -294,20 +236,9 @@ def submit_citizen_report():
         # 画像データを読み取り
         image_data = image_file.read()
         
-        # AI予測を実行
-        from io import BytesIO
+        # AI予測（軽量化のため廃止）
         ai_prediction = None
-        ai_confidence = 0.0
-        
-        try:
-            image_stream = BytesIO(image_data)
-            ai_prediction, ai_confidence = predict_tree_health(image_stream)
-            print(f"AI予測結果: {ai_prediction}, 信頼度: {ai_confidence}")
-        except Exception as e:
-            print(f"AI予測エラー: {e}")
-            # エラーの場合はデフォルト値を設定
-            ai_prediction = "Class1"
-            ai_confidence = 0.5
+        ai_confidence = None
         
         # データベースに保存
         conn = sqlite3.connect('tree_reports.db')
@@ -655,31 +586,62 @@ if NDVI_ENABLED:
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-# AI画像認識エンドポイント
-@app.route('/predict', methods=['POST'])
-def predict_endpoint():
-    if 'file' not in request.files:
-        return jsonify({'error': 'ファイルがありません'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'ファイルが選択されていません'}), 400
-    
+@app.route('/api/llm-advice', methods=['POST'])
+def llm_advice():
+    """Gemini APIを用いた樹木健康状態アドバイス"""
     try:
-        # AI予測を実行
-        prediction, confidence = predict_tree_health(file.stream)
-        
-        if prediction is None:
-            return jsonify({'error': 'AI予測に失敗しました'}), 500
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'データが提供されていません'}), 400
             
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key or api_key == "your_gemini_api_key_here":
+            return jsonify({'error': 'Gemini APIキーが設定されていません'}), 500
+            
+        genai.configure(api_key=api_key)
+        
+        # モデルの初期化 (gemini-2.5-flashを推奨・軽量高速)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # コンテキストの組み立て
+        tree_id = data.get('tree_id', '不明')
+        species = data.get('species', '不明')
+        ndvi = data.get('ndvi')
+        ndvi_prev = data.get('ndvi_prev_year')
+        ndvi_diff = data.get('ndvi_diff')
+        
+        ndvi_text = f"{ndvi:.3f}" if ndvi is not None else "データなし"
+        prev_text = f"{ndvi_prev:.3f}" if ndvi_prev is not None else "データなし"
+        diff_text = f"{ndvi_diff:+.3f}" if ndvi_diff is not None else "データなし"
+        
+        prompt = f"""
+あなたは樹木医アシスタントです。以下のデータを持つ特定の樹木について、対象の健康状態を評価し、適切なアドバイスを簡潔に（3〜4文程度で）提供してください。
+専門用語を使いすぎず、市民が聞いて分かりやすい言葉で説明してください。
+
+【対象樹木データ】
+- 樹木ID: {tree_id}
+- 樹種: {species}
+- 最新のNDVI (植生指数): {ndvi_text}
+- 前年同期のNDVI: {prev_text}
+- NDVIの差分 (今年 - 前年): {diff_text}
+
+【判断基準の参考】
+- NDVIの差分がマイナス0.05より低い場合は「減少（活力低下の恐れ）」
+- NDVIの差分がマイナス0.05〜プラス0.05の場合は「安定」
+- NDVIの差分がプラス0.05より高い場合は「増加（活力上昇）」
+※データに欠損(「不明」や「データなし」)がある場合は、得られたデータの範囲で推測してください。
+"""
+
+        response = model.generate_content(prompt)
+        advice_text = response.text
+        
         return jsonify({
-            'prediction': prediction,
-            'confidence': round(confidence, 4),
-            'health_status': 'healthy' if 'Class1' in prediction else 'unhealthy'
+            'success': True,
+            'advice': advice_text
         })
         
     except Exception as e:
-        print(f"予測エラー: {e}")
+        print(f"LLM API Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 # 樹木の報告履歴を取得
@@ -843,14 +805,30 @@ def get_ndvi_status():
             'enabled': False,
             'message': 'NDVI機能は無効です（依存関係をインストールしてください）'
         })
+
+@app.route('/api/validate-paper', methods=['GET'])
+def validate_paper():
+    """論文検証用のAPI（前年同期比差分含む）"""
+    try:
+        from gee_utils import validate_against_paper_with_comparison
+        results = validate_against_paper_with_comparison()
+        return jsonify({
+            'success': True,
+            'results': results,
+            'message': '論文検証（前年同期比差分含む）が完了しました'
+        })
+    except Exception as e:
+        print(f"論文検証エラー: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': '論文検証に失敗しました'
+        }), 500
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory('static', filename)
 
 if __name__ == '__main__':
-    # AI初期化
-    initialize_ai()
-    
     # スケジューラー開始（NDVI機能が有効な場合のみ）
     if NDVI_ENABLED:
         scheduler.start()

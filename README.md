@@ -15,7 +15,6 @@
 ### バックエンド
 - **Flask**: 軽量Webフレームワーク
 - **Python**: データ処理とAPI提供
-- **TensorFlow**: AI画像認識
 - **Google Earth Engine**: 衛星データ処理
 
 ### フロントエンド
@@ -91,10 +90,6 @@ DATABASE_URL=sqlite:///tree_ndvi.db
 FLASK_ENV=production
 FLASK_DEBUG=False
 SECRET_KEY=your-secret-key-here
-
-# TensorFlow設定
-TF_CPP_MIN_LOG_LEVEL=2
-TF_ENABLE_ONEDNN_OPTS=0
 ```
 
 ## 📁 重要なファイル
@@ -106,13 +101,10 @@ TF_ENABLE_ONEDNN_OPTS=0
 - `static/`: フロントエンドファイル
 - `templates/`: HTMLテンプレート
 - `*.db`: SQLiteデータベース（NDVIデータ、市民レポート）
-- `keras_model.h5`: AI画像認識モデル
-- `labels.txt`: AIモデルのラベル
 
 ## ⚠️ 注意事項
 
 1. **データベース**: `tree_ndvi.db`と`tree_reports.db`は`.gitignore`に含まれていません（永続化）
-2. **AIモデル**: `keras_model.h5`は2.3MBのため、GitHubの制限内です
 3. **環境変数**: 本番環境では必ず`.env`ファイルを設定してください
 4. **Google Earth Engine**: サービスアカウントの認証情報が必要です
 
