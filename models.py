@@ -71,6 +71,9 @@ def init_database(database_url=None):
         connect_args = {"check_same_thread": False}
     
     engine = create_engine(database_url, connect_args=connect_args)
-    Base.metadata.create_all(engine)
-    print(f"データベースが初期化されました: {database_url}")
+    try:
+        Base.metadata.create_all(engine)
+        print(f"データベースが初期化されました: {database_url}")
+    except Exception as e:
+        print(f"データベース初期化スキップ (Vercel等のRead-Only環境): {e}")
     return engine

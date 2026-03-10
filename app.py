@@ -36,54 +36,62 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 
+# DBパスの決定 (Vercel環境では/tmp/を使用)
+DB_DIR = '/tmp' if os.environ.get('VERCEL') else '.'
+REPORTS_DB = os.path.join(DB_DIR, 'tree_reports.db')
+NDVI_DB_URL = f"sqlite:///{os.path.join(DB_DIR, 'tree_ndvi.db')}"
+
 # 既存のデータベースの初期化
 def init_db():
-    conn = sqlite3.connect('tree_reports.db')
-    cursor = conn.cursor()
-    
-    # 市民レポートテーブル
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS citizen_reports (
-        id TEXT PRIMARY KEY,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        report_type TEXT NOT NULL,
-        severity INTEGER NOT NULL,
-        description TEXT,
-        image_data BLOB,
-        image_filename TEXT,
-        status TEXT DEFAULT 'submitted',
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        analysis_result TEXT,
-        tree_species TEXT,
-        health_score REAL,
-        health_status TEXT,
-        analysis_date DATETIME
-    )
-    ''')
-    
-    # 既存テーブルにAI予測カラムを追加（存在しない場合のみ）
     try:
-        cursor.execute('ALTER TABLE citizen_reports ADD COLUMN ai_prediction TEXT')
-        print("ai_predictionカラムを追加しました")
-    except sqlite3.OperationalError:
-        print("ai_predictionカラムは既に存在します")
-    
-    try:
-        cursor.execute('ALTER TABLE citizen_reports ADD COLUMN ai_confidence REAL')
-        print("ai_confidenceカラムを追加しました")
-    except sqlite3.OperationalError:
-        print("ai_confidenceカラムは既に存在します")
-    
-    conn.commit()
-    conn.close()
+        conn = sqlite3.connect(REPORTS_DB)
+        cursor = conn.cursor()
+        
+        # 市民レポートテーブル
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS citizen_reports (
+            id TEXT PRIMARY KEY,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            report_type TEXT NOT NULL,
+            severity INTEGER NOT NULL,
+            description TEXT,
+            image_data BLOB,
+            image_filename TEXT,
+            status TEXT DEFAULT 'submitted',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            analysis_result TEXT,
+            tree_species TEXT,
+            health_score REAL,
+            health_status TEXT,
+            analysis_date DATETIME
+        )
+        ''')
+        
+        # 既存テーブルにAI予測カラムを追加（存在しない場合のみ）
+        try:
+            cursor.execute('ALTER TABLE citizen_reports ADD COLUMN ai_prediction TEXT')
+            print("ai_predictionカラムを追加しました")
+        except sqlite3.OperationalError:
+            pass
+        
+        try:
+            cursor.execute('ALTER TABLE citizen_reports ADD COLUMN ai_confidence REAL')
+            print("ai_confidenceカラムを追加しました")
+        except sqlite3.OperationalError:
+            pass
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB初期化スキップ(Vercel等のRead-Only環境): {e}")
 
 # 既存DB初期化
 init_db()
 
 # NDVI関連の初期化（利用可能な場合のみ）
 if NDVI_ENABLED:
-    DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///tree_ndvi.db')
+    DATABASE_URL = os.environ.get('DATABASE_URL', NDVI_DB_URL)
     init_database(DATABASE_URL)
     ndvi_processor = NDVIProcessor(DATABASE_URL)
     
@@ -241,7 +249,7 @@ def submit_citizen_report():
         ai_confidence = None
         
         # データベースに保存
-        conn = sqlite3.connect('tree_reports.db')
+        conn = sqlite3.connect(REPORTS_DB)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -354,7 +362,7 @@ def get_analysis_result(report_id):
         dummy_result = dummy_results[result_index]
         
         # データベースに分析結果を保存
-        conn = sqlite3.connect('tree_reports.db')
+        conn = sqlite3.connect(REPORTS_DB)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -403,7 +411,7 @@ def get_analysis_result(report_id):
 @app.route('/api/citizen-reports')
 def get_citizen_reports():
     try:
-        conn = sqlite3.connect('tree_reports.db')
+        conn = sqlite3.connect(REPORTS_DB)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -468,7 +476,7 @@ def get_citizen_reports():
 @app.route('/api/image/<report_id>')
 def get_image(report_id):
     try:
-        conn = sqlite3.connect('tree_reports.db')
+        conn = sqlite3.connect(REPORTS_DB)
         cursor = conn.cursor()
         
         cursor.execute('SELECT image_data, image_filename FROM citizen_reports WHERE id = ?', (report_id,))
@@ -648,7 +656,7 @@ def llm_advice():
 @app.route('/api/tree-reports/<tree_id>')
 def get_tree_reports(tree_id):
     try:
-        conn = sqlite3.connect('tree_reports.db')
+        conn = sqlite3.connect(REPORTS_DB)
         cursor = conn.cursor()
         
         # 樹木IDまたは座標で報告を検索
